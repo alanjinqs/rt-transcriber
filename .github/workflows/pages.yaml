@@ -34,7 +34,6 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: lts/*
-          cache: "npm"
       - name: corepack enable
         run: corepack enable
       - name: Install dependencies

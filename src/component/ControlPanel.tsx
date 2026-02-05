@@ -160,9 +160,9 @@ export const ControlPanel = ({
 
 					{/* Audio Source Section */}
 					<div>
-						<label className="block text-xs font-medium text-foreground mb-1.5">
+						<div className="block text-xs font-medium text-foreground mb-1.5">
 							Audio Source
-						</label>
+						</div>
 						<div className="flex gap-4">
 							<label className="flex items-center gap-2 cursor-pointer text-sm">
 								<input
@@ -246,6 +246,7 @@ export const ControlPanel = ({
 							</select>
 						</div>
 					</div>
+
 				</div>
 			)}
 

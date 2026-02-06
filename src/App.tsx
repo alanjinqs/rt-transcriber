@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { usePiP } from "./use-pip";
 import { useSoniox } from "./use-soniox";
+import { useVibrato, type VibratoToken } from "./use-vibrato";
 import { ControlPanel } from "./component/ControlPanel";
 
 export type AudioSource = "microphone" | "screen";
@@ -11,10 +12,11 @@ function App() {
 	const [finishedTranslatedText, setFinishedTranslatedText] = useState("");
 
 	const [texts, setTexts] = useState<
-		{ japanese: string; translated: string; id: string }[]
+		{ japanese: string; translated: string; id: string; tokens?: VibratoToken[] }[]
 	>([]);
 	const [pendingJapanese, setPendingJapanese] = useState("");
-	const [pendingTanslatedText, setPendingTanslatedText] = useState("");
+	const [pendingTranslatedText, setPendingTranslatedText] = useState("");
+	const [pendingTokens, setPendingTokens] = useState<VibratoToken[]>([]);
 	const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
 	const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
 	const [apiKey, setApiKey] = useState("");
@@ -34,13 +36,18 @@ function App() {
 		selectedDeviceId,
 		targetLanguage,
 		stream: audioSource === "screen" ? screenStream : null,
-		onFinalOriginalText: (text) =>
-			setFinishedJapaneseText((prev) => prev + text),
-		onFinalTranslatedText: (text) =>
-			setFinishedTranslatedText((prev) => prev + text),
+		onFinalOriginalText: (text) => {
+			setFinishedJapaneseText((prev) => prev + text);
+		},
+		onFinalTranslatedText: (text) => {
+			setFinishedTranslatedText((prev) => prev + text);
+		},
 		onPendingOriginalText: setPendingJapanese,
-		onPendingTranslatedText: setPendingTanslatedText,
+		onPendingTranslatedText: setPendingTranslatedText,
 	});
+
+	const { tokenize, status: vibratoStatus, loadDictionary, hasDictionary } = useVibrato();
+	const pendingRequestId = useRef(0);
 
 	// Request screen share and get audio stream
 	const requestScreenShare = async (): Promise<MediaStream | null> => {
@@ -56,7 +63,9 @@ function App() {
 				alert(
 					"No audio track found. Make sure to share a Chrome tab with audio enabled.",
 				);
-				displayStream.getTracks().forEach((track) => track.stop());
+				displayStream.getTracks().forEach((track) => {
+					track.stop();
+				});
 				return null;
 			}
 
@@ -106,7 +115,9 @@ function App() {
 		stopSonioxRecording();
 		// Clean up screen stream and video track
 		if (screenStream) {
-			screenStream.getTracks().forEach((track) => track.stop());
+			screenStream.getTracks().forEach((track) => {
+				track.stop();
+			});
 			setScreenStream(null);
 		}
 		if (displayVideoTrackRef.current) {
@@ -116,19 +127,58 @@ function App() {
 	};
 
 	useEffect(() => {
-		if (finishedJapaneseText && finishedTranslatedText) {
-			setTexts((prev) => [
-				...prev,
-				{
-					japanese: finishedJapaneseText,
-					translated: finishedTranslatedText,
-					id: crypto.randomUUID(),
-				},
-			]);
-			setFinishedJapaneseText("");
-			setFinishedTranslatedText("");
+		if (!finishedJapaneseText || !finishedTranslatedText) {
+			return;
 		}
-	}, [finishedJapaneseText, finishedTranslatedText]);
+
+		const japaneseText = finishedJapaneseText;
+		const translatedText = finishedTranslatedText;
+		const id = crypto.randomUUID();
+
+		setFinishedJapaneseText("");
+		setFinishedTranslatedText("");
+
+		setTexts((prev) => [
+			...prev,
+			{
+				japanese: japaneseText,
+				translated: translatedText,
+				id,
+				tokens: undefined,
+			},
+		]);
+
+		if (hasDictionary) {
+			tokenize(japaneseText)
+				.then((tokens) => {
+					setTexts((prev) =>
+						prev.map((t) => (t.id === id ? { ...t, tokens } : t))
+					);
+				})
+				.catch((error) => {
+					console.error("Tokenization failed:", error);
+				});
+		}
+	}, [finishedJapaneseText, finishedTranslatedText, tokenize, hasDictionary]);
+
+	useEffect(() => {
+		if (!hasDictionary) {
+			setPendingTokens([]);
+			return;
+		}
+		let isActive = true;
+		const requestId = ++pendingRequestId.current;
+		const timer = window.setTimeout(async () => {
+			const tokens = await tokenize(pendingJapanese);
+			if (isActive && requestId === pendingRequestId.current) {
+				setPendingTokens(tokens);
+			}
+		}, 250);
+		return () => {
+			isActive = false;
+			window.clearTimeout(timer);
+		};
+	}, [pendingJapanese, tokenize, hasDictionary]);
 
 	// Picture-in-Picture hook
 	const {
@@ -193,7 +243,8 @@ function App() {
 	const clearAll = () => {
 		setTexts([]);
 		setPendingJapanese("");
-		setPendingTanslatedText("");
+		setPendingTranslatedText("");
+		setPendingTokens([]);
 	};
 
 	return (
@@ -202,6 +253,7 @@ function App() {
 				<ControlPanel
 					isRecording={isRecording}
 					status={status}
+					vibratoStatus={vibratoStatus}
 					startRecording={startRecording}
 					stopRecording={stopRecording}
 					clearAll={clearAll}
@@ -218,12 +270,15 @@ function App() {
 					setTargetLanguage={setTargetLanguage}
 					audioSource={audioSource}
 					setAudioSource={setAudioSource}
+					hasDictionary={hasDictionary}
+					onLoadDictionary={loadDictionary}
 				/>
 
 				<OrigAndTranslatedTexts
 					texts={texts}
 					onGoingJapanese={pendingJapanese}
-					onGoingTranslated={pendingTanslatedText}
+					onGoingTranslated={pendingTranslatedText}
+					pendingTokens={pendingTokens}
 				/>
 			</div>
 
@@ -234,7 +289,8 @@ function App() {
 						<OrigAndTranslatedTexts
 							texts={texts}
 							onGoingJapanese={pendingJapanese}
-							onGoingTranslated={pendingTanslatedText}
+							onGoingTranslated={pendingTranslatedText}
+							pendingTokens={pendingTokens}
 						/>
 						<button
 							type="button"
@@ -273,14 +329,100 @@ function App() {
 	);
 }
 
+const POS_COLORS: Record<string, string> = {
+	名詞: "#3b82f6",
+	動詞: "#ef4444",
+	形容詞: "#f97316",
+	副詞: "#8b5cf6",
+	助詞: "#22c55e",
+	助動詞: "#14b8a6",
+	接続詞: "#ec4899",
+	感動詞: "#f59e0b",
+	連体詞: "#6366f1",
+};
+
+const isSymbol = (pos: string): boolean =>
+	pos.startsWith("記号") || pos.startsWith("補助記号");
+
+const containsKanji = (text: string): boolean =>
+	/[\u4e00-\u9faf\u3400-\u4dbf]/.test(text);
+
+const shouldShowRuby = (token: VibratoToken): boolean => {
+	if (!token.pron || token.pron === "*") return false;
+	return containsKanji(token.surface);
+};
+
+const getColorForPos = (pos: string): string => {
+	if (POS_COLORS[pos]) {
+		return POS_COLORS[pos];
+	}
+	for (const [key, color] of Object.entries(POS_COLORS)) {
+		if (pos.startsWith(key)) {
+			return color;
+		}
+	}
+	return "#9ca3af";
+};
+
+const AnnotatedTokens = ({
+	tokens,
+	isPending = false,
+}: {
+	tokens: VibratoToken[];
+	isPending?: boolean;
+}) => {
+	return (
+		<div className="text-md flex flex-wrap items-baseline leading-[2.5]">
+			{tokens.map((token, index) => {
+				const showRuby = shouldShowRuby(token);
+				const color = getColorForPos(token.pos);
+
+				if (!showRuby) {
+					return (
+						<span
+							key={`${token.surface}-${index}`}
+							style={{
+								borderBottom: isSymbol(token.pos)
+									? undefined
+									: `2px solid ${color}`,
+								opacity: isPending ? 0.7 : 1,
+							}}
+							title={token.pos}
+						>
+							{token.surface}
+						</span>
+					);
+				}
+				return (
+					<ruby
+						key={`${token.surface}-${index}`}
+						style={{
+							borderBottom: `2px solid ${color}`,
+							opacity: isPending ? 0.7 : 1,
+						}}
+						title={token.pos}
+					>
+						{token.surface}
+						<rp>(</rp>
+						<rt className="text-[10px] text-muted-foreground">{token.pron}</rt>
+						<rp>)</rp>
+					</ruby>
+				);
+			})}
+		</div>
+	);
+};
+
 const OrigAndTranslatedTexts = ({
 	texts,
 	onGoingJapanese,
 	onGoingTranslated,
+	pendingTokens,
 }: {
-	texts: { japanese: string; translated: string; id: string }[];
+	texts: { japanese: string; translated: string; id: string; tokens?: VibratoToken[] }[];
 	onGoingJapanese: string;
 	onGoingTranslated: string;
+	pendingTokens: VibratoToken[];
 }) => {
 	const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -301,13 +443,21 @@ const OrigAndTranslatedTexts = ({
 		>
 			{texts.map((text) => (
 				<div key={text.id} className="space-y-0.5">
-					<div className="text-sm text-foreground">{text.japanese}</div>
+					{text.tokens && text.tokens.length > 0 ? (
+						<AnnotatedTokens tokens={text.tokens} />
+					) : (
+						<div className="text-sm text-foreground">{text.japanese}</div>
+					)}
 					<div className="text-xs text-muted-foreground">{text.translated}</div>
 				</div>
 			))}
 			{(onGoingJapanese || onGoingTranslated) && (
 				<div className="space-y-0.5">
-					<div className="text-sm text-primary">{onGoingJapanese}</div>
+					{pendingTokens.length > 0 ? (
+						<AnnotatedTokens tokens={pendingTokens} isPending />
+					) : (
+						<div className="text-sm text-primary">{onGoingJapanese}</div>
+					)}
 					<div className="text-xs text-primary/60">{onGoingTranslated}</div>
 				</div>
 			)}

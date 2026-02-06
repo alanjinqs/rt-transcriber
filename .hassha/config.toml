@@ -1,0 +1,6 @@
+[hooks.Stop]
+melody = "JY-Shibuya"
+
+[hooks.Notification]
+melody = "/Users/alan/Documents/nanihikaru.mp3"
+# matcher = "permission_prompt"  # Only for permission prompts

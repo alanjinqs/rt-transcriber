@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 const DEBUG = true;
 const log = (...args: unknown[]) => {
@@ -14,7 +14,7 @@ export interface VibratoToken {
 interface VibratoWorkerInitMessage {
 	type: "init";
 	wasmUrl: string;
-	dictUrl: string;
+	dictData: Uint8Array;
 }
 
 interface VibratoWorkerTokenizeMessage {
@@ -44,20 +44,26 @@ type VibratoWorkerResponse =
 	| VibratoWorkerErrorMessage;
 
 const DEFAULT_WASM_URL = "/vibrato/vibrato_simple_wasm_bg.wasm";
-const DEFAULT_DICT_URL = "/vibrato/system.dic";
 
 export const useVibrato = () => {
 	const workerRef = useRef<Worker | null>(null);
 	const pendingRequests = useRef(
 		new Map<number, (tokens: VibratoToken[]) => void>(),
 	);
-	const [status, setStatus] = useState("Not initialized");
+	const [status, setStatus] = useState("No dictionary loaded");
 	const [isReady, setIsReady] = useState(false);
+	const [dictFile, setDictFile] = useState<File | null>(null);
 	const requestIdRef = useRef(0);
 	const readyPromiseRef = useRef<Promise<void> | null>(null);
 	const readyResolveRef = useRef<(() => void) | null>(null);
 
 	useEffect(() => {
+		if (!dictFile) {
+			setStatus("No dictionary loaded");
+			setIsReady(false);
+			return;
+		}
+
 		log("Creating Vibrato worker...");
 		const worker = new Worker(
 			new URL("./workers/vibrato.worker.ts", import.meta.url),
@@ -103,23 +109,30 @@ export const useVibrato = () => {
 		};
 
 		setStatus("Loading dictionary...");
-		log("Sending init message with wasmUrl:", DEFAULT_WASM_URL, "dictUrl:", DEFAULT_DICT_URL);
-		const initMessage: VibratoWorkerInitMessage = {
-			type: "init",
-			wasmUrl: DEFAULT_WASM_URL,
-			dictUrl: DEFAULT_DICT_URL,
-		};
-		worker.postMessage(initMessage);
+		dictFile.arrayBuffer().then((buffer) => {
+			const dictData = new Uint8Array(buffer);
+			log("Sending init message with wasmUrl:", DEFAULT_WASM_URL, "dictData size:", dictData.length);
+			const initMessage: VibratoWorkerInitMessage = {
+				type: "init",
+				wasmUrl: DEFAULT_WASM_URL,
+				dictData,
+			};
+			worker.postMessage(initMessage);
+		}).catch((error) => {
+			log("Failed to read dictionary file:", error);
+			setStatus(`Failed to read dictionary: ${error.message}`);
+		});
 
 		return () => {
 			log("Terminating worker");
 			worker.terminate();
 			workerRef.current = null;
 			pendingRequests.current.clear();
+			setIsReady(false);
 		};
-	}, []);
+	}, [dictFile]);
 
-	const tokenize = async (text: string): Promise<VibratoToken[]> => {
+	const tokenize = useCallback(async (text: string): Promise<VibratoToken[]> => {
 		log("tokenize() called, isReady:", isReady, "text:", text.slice(0, 30));
 		if (!workerRef.current) {
 			log("tokenize() - no worker ref, returning empty");
@@ -148,7 +161,15 @@ export const useVibrato = () => {
 		});
 		log("tokenize() - received tokens:", tokens.length);
 		return tokens;
-	};
+	}, [isReady]);
 
-	return { tokenize, status, isReady };
+	const loadDictionary = useCallback((file: File) => {
+		setDictFile(file);
+	}, []);
+
+	const clearDictionary = useCallback(() => {
+		setDictFile(null);
+	}, []);
+
+	return { tokenize, status, isReady, loadDictionary, clearDictionary, hasDictionary: !!dictFile };
 };

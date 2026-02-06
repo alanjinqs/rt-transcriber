@@ -46,7 +46,7 @@ function App() {
 		onPendingTranslatedText: setPendingTanslatedText,
 	});
 
-	const { tokenize, status: vibratoStatus } = useVibrato();
+	const { tokenize, status: vibratoStatus, loadDictionary, hasDictionary } = useVibrato();
 	const pendingRequestId = useRef(0);
 
 	// Request screen share and get audio stream
@@ -138,7 +138,6 @@ function App() {
 		setFinishedJapaneseText("");
 		setFinishedTranslatedText("");
 
-		// Save text immediately without waiting for tokenize
 		setTexts((prev) => [
 			...prev,
 			{
@@ -149,15 +148,20 @@ function App() {
 			},
 		]);
 
-		// Then update with tokens asynchronously
-		tokenize(japaneseText).then((tokens) => {
-			setTexts((prev) =>
-				prev.map((t) => (t.id === id ? { ...t, tokens } : t))
-			);
-		});
-	}, [finishedJapaneseText, finishedTranslatedText, tokenize]);
+		if (hasDictionary) {
+			tokenize(japaneseText).then((tokens) => {
+				setTexts((prev) =>
+					prev.map((t) => (t.id === id ? { ...t, tokens } : t))
+				);
+			});
+		}
+	}, [finishedJapaneseText, finishedTranslatedText, tokenize, hasDictionary]);
 
 	useEffect(() => {
+		if (!hasDictionary) {
+			setPendingTokens([]);
+			return;
+		}
 		let isActive = true;
 		const requestId = ++pendingRequestId.current;
 		const timer = window.setTimeout(async () => {
@@ -170,7 +174,7 @@ function App() {
 			isActive = false;
 			window.clearTimeout(timer);
 		};
-	}, [pendingJapanese, tokenize]);
+	}, [pendingJapanese, tokenize, hasDictionary]);
 
 
 	// Picture-in-Picture hook
@@ -245,7 +249,8 @@ function App() {
 			<div className="p-6 max-w-4xl mx-auto h-screen flex flex-col">
 				<ControlPanel
 					isRecording={isRecording}
-					status={`${status} | Morph: ${vibratoStatus}`}
+					status={status}
+					vibratoStatus={vibratoStatus}
 					startRecording={startRecording}
 					stopRecording={stopRecording}
 					clearAll={clearAll}
@@ -262,6 +267,8 @@ function App() {
 					setTargetLanguage={setTargetLanguage}
 					audioSource={audioSource}
 					setAudioSource={setAudioSource}
+					hasDictionary={hasDictionary}
+					onLoadDictionary={loadDictionary}
 				/>
 
 				<OrigAndTranslatedTexts
@@ -362,7 +369,7 @@ const AnnotatedTokens = ({
 	isPending?: boolean;
 }) => {
 	return (
-		<div className="text-sm flex flex-wrap items-baseline gap-x-0.5 leading-[2.5]">
+		<div className="text-md flex flex-wrap items-baseline leading-[2.5]">
 			{tokens.map((token, index) => {
 				const showRuby = shouldShowRuby(token);
 				const color = getColorForPos(token.pos);

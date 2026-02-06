@@ -28,7 +28,7 @@ function parseFeature(raw: RawToken): VibratoToken {
 interface InitMessage {
 	type: "init";
 	wasmUrl: string;
-	dictUrl: string;
+	dictData: Uint8Array;
 }
 
 interface TokenizeMessage {
@@ -66,7 +66,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
 	
 	if (message.type === "init") {
 		try {
-			const { wasmUrl, dictUrl } = message;
+			const { wasmUrl, dictData } = message;
 			log("Starting WASM initialization with URL:", wasmUrl);
 			
 			log("Calling initWasm()...");
@@ -75,15 +75,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
 			const wasmLoadTime = performance.now() - startTime;
 			log(`initWasm() completed in ${wasmLoadTime.toFixed(0)}ms`);
 			
-			log("Fetching dictionary from:", dictUrl);
-			const dictStartTime = performance.now();
-			const dictResponse = await fetch(dictUrl);
-			if (!dictResponse.ok) {
-				throw new Error(`Failed to fetch dictionary: ${dictResponse.status}`);
-			}
-			const dictData = new Uint8Array(await dictResponse.arrayBuffer());
-			const fetchTime = performance.now() - dictStartTime;
-			log(`Dictionary fetched in ${fetchTime.toFixed(0)}ms, size: ${dictData.length} bytes`);
+			log("Dictionary data received, size:", dictData.length, "bytes");
 			
 			log("Calling wasmInitWithDict() to decompress and load dictionary...");
 			const initStartTime = performance.now();

@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { AudioSource } from "../App";
 
 interface ControlPanelProps {
 	isRecording: boolean;
 	status: string;
+	vibratoStatus: string;
 	startRecording: () => void;
 	stopRecording: () => void;
 	clearAll: () => void;
@@ -20,11 +21,14 @@ interface ControlPanelProps {
 	setTargetLanguage: (lang: string) => void;
 	audioSource: AudioSource;
 	setAudioSource: (source: AudioSource) => void;
+	hasDictionary: boolean;
+	onLoadDictionary: (file: File) => void;
 }
 
 export const ControlPanel = ({
 	isRecording,
 	status,
+	vibratoStatus,
 	startRecording,
 	stopRecording,
 	clearAll,
@@ -41,9 +45,12 @@ export const ControlPanel = ({
 	setTargetLanguage,
 	audioSource,
 	setAudioSource,
+	hasDictionary,
+	onLoadDictionary,
 }: ControlPanelProps) => {
 	const [showApiKeyInput, setShowApiKeyInput] = useState(false);
 	const [showSettings, setShowSettings] = useState(true);
+	const dictInputRef = useRef<HTMLInputElement>(null);
 
 	const saveApiKey = () => {
 		localStorage.setItem("soniox_api_key", apiKey);
@@ -247,6 +254,43 @@ export const ControlPanel = ({
 						</div>
 					</div>
 
+					{/* Dictionary File Section */}
+					<div>
+						<label
+							htmlFor="dict-file"
+							className="block text-xs font-medium text-foreground mb-1.5"
+						>
+							Vibrato Dictionary (Optional)
+						</label>
+						<div className="flex gap-2 items-center">
+							<input
+								ref={dictInputRef}
+								id="dict-file"
+								type="file"
+								accept=".dic,.bin"
+								onChange={(e) => {
+									const file = e.target.files?.[0];
+									if (file) {
+										onLoadDictionary(file);
+									}
+								}}
+								disabled={isRecording}
+								className="hidden"
+							/>
+							<button
+								type="button"
+								onClick={() => dictInputRef.current?.click()}
+								disabled={isRecording}
+								className="h-8 px-3 text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+							>
+								{hasDictionary ? "Change Dictionary" : "Load Dictionary"}
+							</button>
+							<span className="text-xs text-muted-foreground">
+								{hasDictionary ? vibratoStatus : "No dictionary loaded - furigana disabled"}
+							</span>
+						</div>
+					</div>
+
 				</div>
 			)}
 
@@ -280,14 +324,10 @@ export const ControlPanel = ({
 							{pipWindow ? "Close PiP" : "Open PiP"}
 						</button>
 					)}
-					<div className="ml-auto flex items-center gap-2">
-						<span className="text-xs text-muted-foreground">Status:</span>
-						<span
-							className={`text-xs font-medium ${
-								isRecording ? "text-primary" : "text-muted-foreground"
-							}`}
-						>
-							{status}
+					<div className="ml-auto flex items-center gap-4">
+						<span className="text-xs text-muted-foreground">
+							<span className="font-medium">STT:</span>{" "}
+							<span className={isRecording ? "text-primary" : ""}>{status}</span>
 						</span>
 					</div>
 				</div>

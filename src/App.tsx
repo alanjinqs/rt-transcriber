@@ -15,7 +15,7 @@ function App() {
 		{ japanese: string; translated: string; id: string; tokens?: VibratoToken[] }[]
 	>([]);
 	const [pendingJapanese, setPendingJapanese] = useState("");
-	const [pendingTanslatedText, setPendingTanslatedText] = useState("");
+	const [pendingTranslatedText, setPendingTranslatedText] = useState("");
 	const [pendingTokens, setPendingTokens] = useState<VibratoToken[]>([]);
 	const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
 	const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
@@ -43,7 +43,7 @@ function App() {
 			setFinishedTranslatedText((prev) => prev + text);
 		},
 		onPendingOriginalText: setPendingJapanese,
-		onPendingTranslatedText: setPendingTanslatedText,
+		onPendingTranslatedText: setPendingTranslatedText,
 	});
 
 	const { tokenize, status: vibratoStatus, loadDictionary, hasDictionary } = useVibrato();
@@ -149,11 +149,15 @@ function App() {
 		]);
 
 		if (hasDictionary) {
-			tokenize(japaneseText).then((tokens) => {
-				setTexts((prev) =>
-					prev.map((t) => (t.id === id ? { ...t, tokens } : t))
-				);
-			});
+			tokenize(japaneseText)
+				.then((tokens) => {
+					setTexts((prev) =>
+						prev.map((t) => (t.id === id ? { ...t, tokens } : t))
+					);
+				})
+				.catch((error) => {
+					console.error("Tokenization failed:", error);
+				});
 		}
 	}, [finishedJapaneseText, finishedTranslatedText, tokenize, hasDictionary]);
 
@@ -175,7 +179,6 @@ function App() {
 			window.clearTimeout(timer);
 		};
 	}, [pendingJapanese, tokenize, hasDictionary]);
-
 
 	// Picture-in-Picture hook
 	const {
@@ -240,7 +243,7 @@ function App() {
 	const clearAll = () => {
 		setTexts([]);
 		setPendingJapanese("");
-		setPendingTanslatedText("");
+		setPendingTranslatedText("");
 		setPendingTokens([]);
 	};
 
@@ -274,7 +277,7 @@ function App() {
 				<OrigAndTranslatedTexts
 					texts={texts}
 					onGoingJapanese={pendingJapanese}
-					onGoingTranslated={pendingTanslatedText}
+					onGoingTranslated={pendingTranslatedText}
 					pendingTokens={pendingTokens}
 				/>
 			</div>
@@ -286,7 +289,7 @@ function App() {
 						<OrigAndTranslatedTexts
 							texts={texts}
 							onGoingJapanese={pendingJapanese}
-							onGoingTranslated={pendingTanslatedText}
+							onGoingTranslated={pendingTranslatedText}
 							pendingTokens={pendingTokens}
 						/>
 						<button

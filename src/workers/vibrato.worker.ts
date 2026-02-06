@@ -1,15 +1,14 @@
 import initWasm, { init_with_dict as wasmInitWithDict, tokenize as wasmTokenize } from "../vibrato-wasm/vibrato_simple_wasm.js";
+import type {
+	VibratoToken,
+	VibratoWorkerMessage,
+	VibratoWorkerResponse,
+} from "../types/vibrato";
 
-const DEBUG = true;
+const DEBUG = import.meta.env.DEV;
 const log = (...args: unknown[]) => {
 	if (DEBUG) console.log("[vibrato-worker]", ...args);
 };
-
-export interface VibratoToken {
-	surface: string;
-	pos: string;
-	pron: string;
-}
 
 interface RawToken {
 	surface: string;
@@ -25,42 +24,11 @@ function parseFeature(raw: RawToken): VibratoToken {
 	};
 }
 
-interface InitMessage {
-	type: "init";
-	wasmUrl: string;
-	dictData: Uint8Array;
-}
-
-interface TokenizeMessage {
-	type: "tokenize";
-	id: number;
-	text: string;
-}
-
-type WorkerMessage = InitMessage | TokenizeMessage;
-
-interface ReadyMessage {
-	type: "ready";
-}
-
-interface TokensMessage {
-	type: "tokens";
-	id: number;
-	tokens: VibratoToken[];
-}
-
-interface ErrorMessage {
-	type: "error";
-	message: string;
-}
-
-type WorkerResponse = ReadyMessage | TokensMessage | ErrorMessage;
-
 let isInitialized = false;
 
 log("Worker script loaded");
 
-self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
+self.onmessage = async (event: MessageEvent<VibratoWorkerMessage>) => {
 	const message = event.data;
 	log("Received message:", message.type);
 	
@@ -85,7 +53,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
 			
 			isInitialized = true;
 			log("Initialization complete, sending ready message");
-			const response: WorkerResponse = { type: "ready" };
+			const response: VibratoWorkerResponse = { type: "ready" };
 			self.postMessage(response);
 		} catch (error) {
 			log("ERROR during initialization:", error);
@@ -93,7 +61,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
 				? `${error.name}: ${error.message}${error.stack ? `\n${error.stack}` : ""}`
 				: String(error);
 			log("Error details:", errorMessage);
-			const response: WorkerResponse = {
+			const response: VibratoWorkerResponse = {
 				type: "error",
 				message: error instanceof Error ? error.message : "Unknown error",
 			};
@@ -105,7 +73,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
 	if (message.type === "tokenize") {
 		if (!isInitialized) {
 			log("ERROR: Tokenize called but not initialized");
-			const response: WorkerResponse = {
+			const response: VibratoWorkerResponse = {
 				type: "error",
 				message: "Tokenizer not initialized",
 			};
@@ -117,7 +85,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
 			const rawTokens = wasmTokenize(message.text) as RawToken[];
 			const tokens = rawTokens.map((t) => parseFeature(t));
 			log("Tokenization result:", tokens.length, "tokens");
-			const response: WorkerResponse = {
+			const response: VibratoWorkerResponse = {
 				type: "tokens",
 				id: message.id,
 				tokens,
@@ -125,7 +93,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
 			self.postMessage(response);
 		} catch (error) {
 			log("ERROR during tokenization:", error);
-			const response: WorkerResponse = {
+			const response: VibratoWorkerResponse = {
 				type: "error",
 				message: error instanceof Error ? error.message : "Unknown error",
 			};

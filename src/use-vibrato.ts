@@ -1,47 +1,17 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import type {
+	VibratoToken,
+	VibratoWorkerInitMessage,
+	VibratoWorkerTokenizeMessage,
+	VibratoWorkerResponse,
+} from "./types/vibrato";
 
-const DEBUG = true;
+const DEBUG = import.meta.env.DEV;
 const log = (...args: unknown[]) => {
 	if (DEBUG) console.log("[use-vibrato]", ...args);
 };
 
-export interface VibratoToken {
-	surface: string;
-	pos: string;
-	pron: string;
-}
-
-interface VibratoWorkerInitMessage {
-	type: "init";
-	wasmUrl: string;
-	dictData: Uint8Array;
-}
-
-interface VibratoWorkerTokenizeMessage {
-	type: "tokenize";
-	id: number;
-	text: string;
-}
-
-interface VibratoWorkerReadyMessage {
-	type: "ready";
-}
-
-interface VibratoWorkerTokensMessage {
-	type: "tokens";
-	id: number;
-	tokens: VibratoToken[];
-}
-
-interface VibratoWorkerErrorMessage {
-	type: "error";
-	message: string;
-}
-
-type VibratoWorkerResponse =
-	| VibratoWorkerReadyMessage
-	| VibratoWorkerTokensMessage
-	| VibratoWorkerErrorMessage;
+export type { VibratoToken };
 
 const DEFAULT_WASM_URL = "/vibrato/vibrato_simple_wasm_bg.wasm";
 
@@ -123,11 +93,12 @@ export const useVibrato = () => {
 			setStatus(`Failed to read dictionary: ${error.message}`);
 		});
 
+		const currentPendingRequests = pendingRequests.current;
 		return () => {
 			log("Terminating worker");
 			worker.terminate();
 			workerRef.current = null;
-			pendingRequests.current.clear();
+			currentPendingRequests.clear();
 			setIsReady(false);
 		};
 	}, [dictFile]);

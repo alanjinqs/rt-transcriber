@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from "react";
 import {
 	SonioxClient,
 	type SpeechToTextAPIResponse,
 } from "@soniox/speech-to-text-web";
+import { useEffect, useRef, useState } from "react";
 
 interface UseSonioxOptions {
 	apiKey: string;
@@ -49,7 +49,7 @@ export const useSoniox = ({
 			sonioxClientRef.current = client;
 
 			await client.start({
-				model: "stt-rt-preview",
+				model: "stt-rt-v4",
 				languageHints: ["ja"],
 				translation: { type: "one_way", target_language: targetLanguage },
 				// enableSpeakerDiarization: true,
